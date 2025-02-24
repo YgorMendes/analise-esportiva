@@ -1,0 +1,13 @@
+Flask==3.1.0
+gunicorn==23.0.0
+python-dotenv==0.19.2
+pydantic==2.10.3
+typing_extensions==4.12.2
+supabase==2.10.0
+yt-dlp
+openai-whisper
+ffmpeg-python
+torch==2.2.0  # Usando a versão mais recente disponível
+torchaudio==2.2.0  # Usando a versão compatível
+numpy==1.26.4  
+ffmpeg
