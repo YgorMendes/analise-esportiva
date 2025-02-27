@@ -11,3 +11,10 @@ torch==2.2.0  # Usando a versão mais recente disponível
 torchaudio==2.2.0  # Usando a versão compatível
 numpy==1.26.4  
 ffmpeg
+google-cloud-bigquery
+pandas
+pyarrow
+jupyter
+ipykernel
+db-dtypes
+google-cloud-bigquery-storage

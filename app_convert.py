@@ -4,63 +4,89 @@ import os
 import yt_dlp
 import whisper
 import ffmpeg
+import pandas as pd
+from google.cloud import bigquery
+from flask_cors import CORS
+
+os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "/home/ymendes/projects/converter-backend/credenciais_bigquery.json"
  
 load_dotenv() 
 app = Flask(__name__)
- 
-def baixar_audio(youtube_url, output_path="audio.mp3"):
-  """Baixa o áudio de um vídeo do YouTube e salva como MP3."""
-  ydl_opts = {
-    'format': 'bestaudio/best',
-    'postprocessors': [{
-        'key': 'FFmpegExtractAudio',
-        'preferredcodec': 'mp3',
-        'preferredquality': '192',
-    }],
-    'outtmpl': output_path
-  }
+CORS(app, resources={r"/*": {"origins": "http://localhost:3000"}})
+client = bigquery.Client()
 
-  with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-    ydl.download([youtube_url])
- 
-    return output_path
- 
-def transcrever_audio(audio_path):
-  """Transcreve o áudio usando Whisper."""
-  model = whisper.load_model("base")  # Pode trocar por "tiny", "small", "medium", "large"
-  result = model.transcribe(audio_path)
-  return result["text"]
- 
-def main(youtube_url):
-  print("🔄 Baixando o áudio do YouTube...")
-  audio_path = baixar_audio(youtube_url)
+@app.route('/get-all-crime', methods=['GET'])
+def getAllCrime():
+  name = request.args.get('name')
+  limit = request.args.get('limit')
 
-  if os.path.exists(audio_path + ".mp3"):
-    os.rename(audio_path + ".mp3", audio_path)
+  if not name:
+    return jsonify({"error": "A propriedade 'name' é obrigatória" }), 400
 
-  print("📝 Transcrevendo o áudio...")
-  texto_transcrito = transcrever_audio(audio_path)
-
-  print("\n📜 Transcrição do vídeo:\n")
-  print(texto_transcrito)
-  
-  # Remover o arquivo de áudio após a transcrição (opcional)
-  os.remove(audio_path)
-  return texto_transcrito
- 
-@app.route('/baixar-audio', methods=['POST'])
-def get_link():
   try:
-    data = request.json
-    if not data or "link" not in data or not isinstance(data["link"], str):
-      return jsonify({"error": "O campo 'link' é obrigatório e deve ser uma string."}), 400
-    
-    link = main(data["link"])
+    limit = int(limit)
+  except:
+    return jsonify({"error": "O 'limit' deve ser um número inteiro." })
 
-    return jsonify({"Transcrição:": link}), 200
+  if limit < 1 or limit > 10:
+    return jsonify({"error": "O limite deve ser entre 1 e 10"}), 400
 
+  try:
+    query = f"""
+    SELECT primary_type, case_number
+    FROM `bigquery-public-data.chicago_crime.crime`
+    WHERE  primary_type = '{name}'
+    LIMIT {limit}
+    """
+
+    df = client.query(query).to_dataframe()
+    if df.empty:
+      return jsonify({"error": "Nenhum crime encontrado com o nome especificado."}), 404
+
+    return jsonify(df.to_dict(orient="records")), 200
+  
   except Exception as e:
+    print(f"Erro: {e}")
     return jsonify({"error": str(e)}), 500
- 
+
+@app.route('/get-all-distinct', methods=['GET'])
+def getAllCrime_distinct():
+  
+  try:
+    query = f"""
+    SELECT DISTINCT primary_type
+    FROM `bigquery-public-data.chicago_crime.crime`
+    ORDER BY primary_type
+    LIMIT 20
+    """
+
+    df = client.query(query).to_dataframe()    
+    return jsonify(df.to_dict(orient="records")), 200
+  
+  except Exception as e:
+    print(f"Erro: {e}")
+    return jsonify({"error": str(e)}), 500
+
+@app.route('/get-all-count', methods=['GET'])
+def getAllCrime_count():
+  name = request.args.get('name')
+  try:
+    query = f"""
+    SELECT primary_type, COUNT(*) AS total_casos
+    FROM `bigquery-public-data.chicago_crime.crime`
+    WHERE primary_type = '{name}'
+    GROUP BY primary_type
+    ORDER BY total_casos DESC
+    LIMIT 20
+    """
+
+    df = client.query(query).to_dataframe()  
+    return jsonify(df.to_dict(orient="records")), 200
+  
+  except Exception as e:
+    print(f"Erro: {e}")
+    return jsonify({"error": str(e)}), 500
+
+
 if __name__ == '__main__':
   app.run(debug=True)
