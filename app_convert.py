@@ -8,6 +8,81 @@ import pandas as pd
 from google.cloud import bigquery
 from flask_cors import CORS
 
+leagues = [
+  {
+    'name': 'UEFA Champions League',
+    'id': 1,
+    'teams': [
+      {
+        'name': 'Real Madrd',
+        'stars': True,
+        'goalsScored': 28,
+        'goalsConceded': 17,
+        'wins': 8,
+        'draws': 0,
+        'defeats': 4,
+        'ballPossesion': 51.25,
+        'passingEffectiveness': 90.34,
+        'attacks': 612,
+      },
+      {
+        'name': 'Arsenal',
+        'stars': False,
+        'goalsScored': 25,
+        'goalsConceded': 6,
+        'wins': 7,
+        'draws': 2,
+        'defeats': 1,
+        'ballPossesion': 53.20,
+        'passingEffectiveness': 86.90,
+        'attacks': 514,
+      },
+      
+    ],
+  },
+]
+
+def calcular_probabilidades(time_casa, time_fora):
+    def força(time):
+        jogos = time['wins'] + time['draws'] + time['defeats']
+        ataque = time['goalsScored'] / jogos
+        defesa = (1 / (time['goalsConceded'] + 1))  # evitar divisão por zero
+        return ataque * defesa
+
+    # Força bruta dos dois times
+    força_casa = força(time_casa)
+    força_fora = força(time_fora)
+
+    # Bônus se tiver stars ou estiver jogando em casa
+    if time_casa['stars']:
+        força_casa *= 1.1
+    if time_fora['stars']:
+        força_fora *= 1.1
+
+    força_casa *= 1.1  # bônus por estar jogando em casa
+
+    # Calcular chance de vitória proporcional à força
+    total_força = força_casa + força_fora
+    prob_casa = força_casa / total_força
+    prob_fora = força_fora / total_força
+
+    # Empate depende da proximidade das forças
+    diff = abs(prob_casa - prob_fora)
+    empate = max(0.1, 0.4 - diff)  # mais equilíbrio, mais chance de empate
+
+    # Ajuste final para somar 1.0
+    total = prob_casa + prob_fora + empate
+    prob_casa = prob_casa / total
+    prob_fora = prob_fora / total
+    empate = empate / total
+
+    return {
+        'vitória_time_casa': round(prob_casa * 100, 2),
+        'empate': round(empate * 100, 2),
+        'vitória_time_fora': round(prob_fora * 100, 2),
+    }
+
+
 os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "/home/ymendes/projects/converter-backend/credenciais_bigquery.json"
  
 load_dotenv() 
