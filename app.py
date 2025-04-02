@@ -8,11 +8,11 @@ attributesImportance = {
   'goalsScored': 2,
   'goalsConceded': -1.40,
   'wins': 1,
-  'draws': -0.50,
+  'draws': 0.50,
   'defeats': -1,
-  'ballPossesion': 0.60,
+  'ballPossesion': 0.80,
   'passingEffectiveness': 0.45,
-  'attacks': 0.55,
+  'attacks': 0.10,
 }
 
 
@@ -33,6 +33,45 @@ leagues = [
         'ballPossesion': 51.25,
         'passingEffectiveness': 90.34,
         'attacks': 612,
+      },
+      {
+        'name': 'PSG',
+        'id': '1',
+        'stars': False,
+        'goalsScored': 25,
+        'goalsConceded': 10,
+        'wins': 7,
+        'draws': 1,
+        'defeats': 4,
+        'ballPossesion': 60.34,
+        'passingEffectiveness': 89.50,
+        'attacks': 776,
+      },
+      {
+        'name': 'Internazionale',
+        'id': '3',
+        'stars': False,
+        'goalsScored': 15,
+        'goalsConceded': 2,
+        'wins': 8,
+        'draws': 1,
+        'defeats': 1,
+        'ballPossesion': 50.20,
+        'passingEffectiveness': 88.30,
+        'attacks': 338,
+      },
+      {
+        'name': 'Bayern München',
+        'id': '6',
+        'stars': True,
+        'goalsScored': 28,
+        'goalsConceded': 14,
+        'wins': 8,
+        'draws': 1,
+        'defeats': 3,
+        'ballPossesion': 61.92,
+        'passingEffectiveness': 88.92,
+        'attacks': 758,
       },
       {
         'name': 'Arsenal',
@@ -143,6 +182,10 @@ def get_best_teams(teamProp):
 			for team in sorted_teams
 	])
 
+@app.route('/teams', methods=['GET'])
+def list_teams():
+  all_teams = [{'id': team['id'], 'name': team['name']} for league in leagues for team in league['teams']]
+  return jsonify(all_teams)
 
 @app.route('/match-analysis', methods=['POST'])
 def createMatchAnalysis():
