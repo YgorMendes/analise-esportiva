@@ -7,8 +7,8 @@ supabase==2.10.0
 yt-dlp
 openai-whisper
 ffmpeg-python
-torch==2.2.0  # Usando a versão mais recente disponível
-torchaudio==2.2.0  # Usando a versão compatível
+torch==2.2.0
+torchaudio==2.2.0
 numpy==1.26.4  
 ffmpeg
 google-cloud-bigquery
@@ -18,3 +18,4 @@ jupyter
 ipykernel
 db-dtypes
 google-cloud-bigquery-storage
+flask-cors

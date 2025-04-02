@@ -1,12 +1,20 @@
 from flask import Flask, request, jsonify
 from dotenv import load_dotenv
 import os
-import yt_dlp
-import whisper
-import ffmpeg
 import pandas as pd
-from google.cloud import bigquery
 from flask_cors import CORS
+
+attributesImportance = {
+  'goalsScored': 2,
+  'goalsConceded': -1.40,
+  'wins': 1,
+  'draws': -0.50,
+  'defeats': -1,
+  'ballPossesion': 0.60,
+  'passingEffectiveness': 0.45,
+  'attacks': 0.55,
+}
+
 
 leagues = [
   {
@@ -56,87 +64,57 @@ leagues = [
   },
 ]
 
-def encontrar_time(nome_time):
-    """Busca o time pelo nome dentro da variável leagues."""
-    for liga in leagues:
-        for time in liga['teams']:
-            if time['name'] == nome_time:
-                return time
+def searchTeam(teamName):
+    for league in leagues:
+        for team in league['teams']:
+            if team['name'] == teamName:
+                return team
     return None
 
-def calcular_probabilidades(partida):
-    """Calcula a probabilidade de vitória, empate e derrota baseado nas estatísticas dos times."""
+def generatePower(team, attributesImportance):
+  total_power = 0
+  
+  for key in team:
+    if key in attributesImportance:
+      total_power += team[key] * attributesImportance[key]
+    
+  if team.get('stars', False):
+      total_power *= 1.02  # Aumento de 2% Se o time for um time estrela
+  
+  return total_power
 
-    # Encontrar os times na estrutura de dados
-    time_casa = encontrar_time(partida['homeMach'])
-    time_fora = encontrar_time(partida['visitingTeam'])
+def calculate_match_probabilities(homeTeamPower, visitingTeamPower):
+	# Calculando a soma dos poderes dos dois times
+	total_power = homeTeamPower + visitingTeamPower
+	
+	# A diferença de poder entre os times
+	power_difference = abs(homeTeamPower - visitingTeamPower)
+	
+	# Quanto menor a diferença, maior a chance de empate
+	draw_prob = max(0.2, (1 - power_difference / total_power) * 0.4)  # Empate entre 20% e 50%
 
-    # Se algum time não for encontrado, retornar erro
-    if not time_casa or not time_fora:
-        return {"erro": "Um dos times não foi encontrado."}
-
-    def força(time):
-        """Calcula a força do time com base em ataque, defesa, posse de bola, eficácia no passe e ataques."""
-        jogos = time['wins'] + time['draws'] + time['defeats']
-        
-        # Calcular ataque e defesa baseados em gols
-        ataque = time['goalsScored'] / jogos
-        defesa = 1 / (time['goalsConceded'] + 1)  # Evitar divisão por zero
-
-        # Calcular o impacto da posse de bola, eficácia no passe e número de ataques
-        posse_bola = time['ballPossesion'] / 100  # Normalizando para um valor entre 0 e 1
-        passes_eficazes = time['passingEffectiveness'] / 100  # Normalizando para um valor entre 0 e 1
-        ataques = time['attacks'] / jogos  # Normalizando o número de ataques
-
-        # Combinar todas as variáveis para calcular a força total
-        força_total = (ataque * 0.3) + (defesa * 0.3) + (posse_bola * 0.15) + (passes_eficazes * 0.15) + (ataques * 0.1)
-
-        return força_total
-
-    # Calcular a força base dos times
-    força_casa = força(time_casa)
-    força_fora = força(time_fora)
-
-    # Aplicar bônus corretamente (+2% se for estrela, +2% se for mandante, máximo de 4%)
-    bonus_casa = 1.0
-    if time_casa['stars']:
-        bonus_casa += 0.02  # +2% por ser estrela
-    bonus_casa += 0.02  # +2% por jogar em casa
-    bonus_casa = min(bonus_casa, 1.04)  # Garante que não passe de 4%
-
-    # Aplicar bônus na força do time da casa
-    força_casa *= bonus_casa
-
-    # Calcular probabilidades
-    total_força = força_casa + força_fora
-    prob_casa = força_casa / total_força
-    prob_fora = força_fora / total_força
-
-    # Probabilidade de empate com base no equilíbrio dos times
-    diff = abs(prob_casa - prob_fora)
-    empate = max(0.05, 0.4 - (diff * 2))  # Ajuste para empate baseado na diferença
-
-    # Ajuste final para garantir soma de 100%
-    total = prob_casa + prob_fora + empate
-    prob_casa = (prob_casa / total) * 100
-    prob_fora = (prob_fora / total) * 100
-    empate = (empate / total) * 100
-
-    return {
-        'vitória_time_casa': round(prob_casa, 2),
-        'empate': round(empate, 2),
-        'vitória_time_fora': round(prob_fora, 2),
-    }
-
-# Exemplo de uso:
-partida = {
-    'homeMach': 'Arsenal',
-    'visitingTeam': 'Barcelona'
-}
-
-resultado = calcular_probabilidades(partida)
-print(resultado)
-
+	# Calculando as probabilidades de vitória dos times
+	home_win_prob = homeTeamPower / total_power * (1 - draw_prob)
+	visiting_win_prob = visitingTeamPower / total_power * (1 - draw_prob)
+	
+	# Convertendo as probabilidades para percentuais
+	home_win_prob *= 100
+	visiting_win_prob *= 100
+	draw_prob *= 100
+	
+	# Normalizando as probabilidades para garantir que somem 100%
+	total_prob = home_win_prob + visiting_win_prob + draw_prob
+	
+	# Normalizando para que a soma das probabilidades seja 100%
+	home_win_prob = round((home_win_prob / total_prob) * 100, 2)
+	draw_prob = round((draw_prob / total_prob) * 100, 2)
+	visiting_win_prob = round((visiting_win_prob / total_prob) * 100, 2)
+	
+	return {
+		'home_win_prob': home_win_prob,
+		'draw_prob': draw_prob,
+		'visiting_win_prob': visiting_win_prob
+	}
 
 
 os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "/home/ymendes/projects/converter-backend/credenciais_bigquery.json"
@@ -146,77 +124,43 @@ app = Flask(__name__)
 CORS(app, resources={r"/*": {"origins": "http://localhost:3000"}})
 # client = bigquery.Client()
 
-@app.route('/get-all-crime', methods=['GET'])
-def getAllCrime():
-  name = request.args.get('name')
-  limit = request.args.get('limit')
+@app.route('/best/<teamProp>', methods=['GET'])
+def get_best_teams(teamProp):
+	teams = [team for league in leagues for team in league['teams']]
+    
+	if teamProp == 'power':
+		for team in teams:
+			team['power'] = generatePower(team, attributesImportance)
+    
+	if not all(teamProp in team for team in teams):
+			return jsonify({'error': 'Propriedade inválida'}), 400
+	
+	is_defense_stat = teamProp == 'goalsConceded'
+	sorted_teams = sorted(teams, key=lambda x: x[teamProp], reverse=not is_defense_stat)
+	
+	return jsonify([
+			{'id': team['id'], 'name': team['name'], 'value': team[teamProp]}
+			for team in sorted_teams
+	])
 
-  if not name:
-    return jsonify({"error": "A propriedade 'name' é obrigatória" }), 400
 
-  try:
-    limit = int(limit)
-  except:
-    return jsonify({"error": "O 'limit' deve ser um número inteiro." })
+@app.route('/match-analysis', methods=['POST'])
+def createMatchAnalysis():
+  data = request.json
 
-  if limit < 1 or limit > 10:
-    return jsonify({"error": "O limite deve ser entre 1 e 10"}), 400
+  homeTeam = searchTeam(data['homeTeam'])
+  visitingTeam = searchTeam(data['visitingTeam'])
 
-  try:
-    query = f"""
-    SELECT primary_type, case_number
-    FROM `bigquery-public-data.chicago_crime.crime`
-    WHERE  primary_type = '{name}'
-    LIMIT {limit}
-    """
+  if not homeTeam or not visitingTeam:
+    return jsonify({"error": "Um dos times não foi encontrado"}), 404
 
-    df = client.query(query).to_dataframe()
-    if df.empty:
-      return jsonify({"error": "Nenhum crime encontrado com o nome especificado."}), 404
+  powerHomeTeam = generatePower(homeTeam, attributesImportance) * 1.02
+  powerVisitingTeam = generatePower(visitingTeam, attributesImportance)
 
-    return jsonify(df.to_dict(orient="records")), 200
+  result = calculate_match_probabilities(powerHomeTeam, powerVisitingTeam)
+
+  return jsonify(result), 200
   
-  except Exception as e:
-    print(f"Erro: {e}")
-    return jsonify({"error": str(e)}), 500
-
-@app.route('/get-all-distinct', methods=['GET'])
-def getAllCrime_distinct():
-  
-  try:
-    query = f"""
-    SELECT DISTINCT primary_type
-    FROM `bigquery-public-data.chicago_crime.crime`
-    ORDER BY primary_type
-    LIMIT 20
-    """
-
-    df = client.query(query).to_dataframe()    
-    return jsonify(df.to_dict(orient="records")), 200
-  
-  except Exception as e:
-    print(f"Erro: {e}")
-    return jsonify({"error": str(e)}), 500
-
-@app.route('/get-all-count', methods=['GET'])
-def getAllCrime_count():
-  name = request.args.get('name')
-  try:
-    query = f"""
-    SELECT primary_type, COUNT(*) AS total_casos
-    FROM `bigquery-public-data.chicago_crime.crime`
-    WHERE primary_type = '{name}'
-    GROUP BY primary_type
-    ORDER BY total_casos DESC
-    LIMIT 20
-    """
-
-    df = client.query(query).to_dataframe()  
-    return jsonify(df.to_dict(orient="records")), 200
-  
-  except Exception as e:
-    print(f"Erro: {e}")
-    return jsonify({"error": str(e)}), 500
 
 
 if __name__ == '__main__':
